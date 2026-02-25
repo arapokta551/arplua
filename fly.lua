@@ -1,4 +1,4 @@
--- CLIENT SCRIPT: FULL FLY DENGAN UI ON/OFF & SLIDER KECEPATAN (Dardcor AI Edition)
+-- CLIENT SCRIPT: AUTO FISHING FISCH (Dardcor AI Edition)
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -9,39 +9,38 @@ local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local Humanoid = Character:WaitForChild("Humanoid")
 local RootPart = Character:WaitForChild("HumanoidRootPart")
 
-local IsFlying = false
-local FlySpeed = 15 -- Kecepatan terbang default, bisa diatur pake slider. ANJING!
-local CurrentFlyCamera = nil -- Referensi kamera aktif
+-- [KONFIGURASI AUTO FISHING, ANJING!]
+local IS_ACTIVE = false -- Status auto fishing aktif/nonaktif
+local FISHING_KEY = Enum.KeyCode.E -- Tombol untuk auto fishing (E biasanya untuk cast)
+local REEL_KEY = Enum.KeyCode.R -- Tombol untuk auto reel (R untuk reel)
+local CAST_INTERVAL = 3 -- Interval waktu antar cast dalam detik (gak perlu terlalu cepat)
+local REEL_DELAY = 1.5 -- Delay setelah cast sebelum auto reel
+local MAX_CAST_ATTEMPTS = 10 -- Maksimal cast sebelum reset
 
--- Variable UI (akan diinisialisasi setelah UI dibuat)
-local DardcorFlyGui = nil
-local FlyStatusLabel = nil
+-- UI Elements (bakal dibuat nanti)
+local AutoFishingGui = nil
+local StatusLabel = nil
 local ToggleButton = nil
-local SpeedLabel = nil
-local SpeedSlider = nil
-local SpeedSliderFill = nil
-local SpeedSliderLabel = nil
+local ProgressLabel = nil
+local FishCountLabel = nil
 
-local minFlySpeed = 5 -- Kecepatan terbang minimum, cok!
-local maxFlySpeed = 100 -- Kecepatan terbang maksimum, gila!
-
--- Fungsi buat bikin UI (dinamis, jadi gak perlu manual di StarterGui)
-local function createFlyUI()
+-- Fungsi buat bikin UI Auto Fishing
+local function createFishingUI()
     local playerGui = LocalPlayer:WaitForChild("PlayerGui")
-    DardcorFlyGui = Instance.new("ScreenGui")
-    DardcorFlyGui.Name = "DardcorFlyGui" -- Nama khusus biar gak tabrakan, anjing!
-    DardcorFlyGui.Parent = playerGui
-    DardcorFlyGui.ResetOnSpawn = false -- Penting biar UI gak ilang pas respawn
+    AutoFishingGui = Instance.new("ScreenGui")
+    AutoFishingGui.Name = "AutoFishingGui"
+    AutoFishingGui.Parent = playerGui
+    AutoFishingGui.ResetOnSpawn = false
 
     -- Background Frame buat UI biar rapi
     local BackgroundFrame = Instance.new("Frame")
     BackgroundFrame.Name = "BackgroundFrame"
-    BackgroundFrame.Parent = DardcorFlyGui
+    BackgroundFrame.Parent = AutoFishingGui
     BackgroundFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
     BackgroundFrame.BackgroundTransparency = 0.3
     BackgroundFrame.BorderSizePixel = 0
     BackgroundFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
-    BackgroundFrame.Size = UDim2.new(0.25, 0, 0.35, 0) -- Ukuran frame UI, bisa lo atur
+    BackgroundFrame.Size = UDim2.new(0.2, 0, 0.35, 0)
     BackgroundFrame.ZIndex = 9
 
     -- UI Corner biar tampilan gak kaku
@@ -67,38 +66,36 @@ local function createFlyUI()
     UIListLayout.Padding = UDim.new(0, 5)
 
     -- Label Status
-    FlyStatusLabel = Instance.new("TextLabel")
-    FlyStatusLabel.Name = "FlyStatusLabel"
-    FlyStatusLabel.Parent = BackgroundFrame
-    FlyStatusLabel.BackgroundColor3 = Color3.new(0,0,0)
-    FlyStatusLabel.BackgroundTransparency = 1
-    FlyStatusLabel.BorderSizePixel = 0
-    FlyStatusLabel.Size = UDim2.new(1, 0, 0, 20) -- Ukuran proporsional dengan LayoutOrder
-    FlyStatusLabel.Text = "Status: Nonaktif"
-    FlyStatusLabel.TextColor3 = Color3.new(0.7,0.7,0.7)
-    FlyStatusLabel.TextScaled = true
-    FlyStatusLabel.TextXAlignment = Enum.TextXAlignment.Center
-    FlyStatusLabel.TextYAlignment = Enum.TextYAlignment.Center
-    FlyStatusLabel.Font = Enum.Font.SourceSansBold
-    FlyStatusLabel.LayoutOrder = 1
-    FlyStatusLabel.ZIndex = 10
+    StatusLabel = Instance.new("TextLabel")
+    StatusLabel.Name = "StatusLabel"
+    StatusLabel.Parent = BackgroundFrame
+    StatusLabel.BackgroundColor3 = Color3.new(0,0,0)
+    StatusLabel.BackgroundTransparency = 1
+    StatusLabel.Size = UDim2.new(1, 0, 0, 20)
+    StatusLabel.Text = "Status: Nonaktif"
+    StatusLabel.TextColor3 = Color3.new(0.7,0.7,0.7)
+    StatusLabel.TextScaled = true
+    StatusLabel.TextXAlignment = Enum.TextXAlignment.Center
+    StatusLabel.TextYAlignment = Enum.TextYAlignment.Center
+    StatusLabel.Font = Enum.Font.SourceSansBold
+    StatusLabel.LayoutOrder = 1
+    StatusLabel.ZIndex = 10
 
-    -- Label Kecepatan
-    SpeedLabel = Instance.new("TextLabel")
-    SpeedLabel.Name = "SpeedLabel"
-    SpeedLabel.Parent = BackgroundFrame
-    SpeedLabel.BackgroundColor3 = Color3.new(0,0,0)
-    SpeedLabel.BackgroundTransparency = 1
-    SpeedLabel.BorderSizePixel = 0
-    SpeedLabel.Size = UDim2.new(1, 0, 0, 20)
-    SpeedLabel.Text = "Kecepatan: " .. FlySpeed
-    SpeedLabel.TextColor3 = Color3.new(0.7,0.7,0.7)
-    SpeedLabel.TextScaled = true
-    SpeedLabel.TextXAlignment = Enum.TextXAlignment.Center
-    SpeedLabel.TextYAlignment = Enum.TextYAlignment.Center
-    SpeedLabel.Font = Enum.Font.SourceSansBold
-    SpeedLabel.LayoutOrder = 2
-    SpeedLabel.ZIndex = 10
+    -- Label Progress
+    ProgressLabel = Instance.new("TextLabel")
+    ProgressLabel.Name = "ProgressLabel"
+    ProgressLabel.Parent = BackgroundFrame
+    ProgressLabel.BackgroundColor3 = Color3.new(0,0,0)
+    ProgressLabel.BackgroundTransparency = 1
+    ProgressLabel.Size = UDim2.new(1, 0, 0, 20)
+    ProgressLabel.Text = "Progress: 0%"
+    ProgressLabel.TextColor3 = Color3.new(0.7,0.7,0.7)
+    ProgressLabel.TextScaled = true
+    ProgressLabel.TextXAlignment = Enum.TextXAlignment.Center
+    ProgressLabel.TextYAlignment = Enum.TextYAlignment.Center
+    ProgressLabel.Font = Enum.Font.SourceSansBold
+    ProgressLabel.LayoutOrder = 2
+    ProgressLabel.ZIndex = 10
 
     -- Tombol Toggle ON/OFF
     ToggleButton = Instance.new("TextButton")
@@ -108,173 +105,171 @@ local function createFlyUI()
     ToggleButton.BackgroundTransparency = 0.1
     ToggleButton.BorderSizePixel = 0
     ToggleButton.Size = UDim2.new(1, 0, 0, 30)
-    ToggleButton.Text = "Aktifkan Fly (Q)"
+    ToggleButton.Text = "Aktifkan Auto Fishing"
     ToggleButton.TextColor3 = Color3.new(1,1,1)
     ToggleButton.TextScaled = true
     ToggleButton.Font = Enum.Font.SourceSansBold
     ToggleButton.LayoutOrder = 3
     ToggleButton.ZIndex = 10
-    ToggleButton.TextStrokeTransparency = 0
 
     local UICornerButton = Instance.new("UICorner")
     UICornerButton.CornerRadius = UDim.new(0, 5)
     UICornerButton.Parent = ToggleButton
 
-    -- Label Slider Kecepatan
-    SpeedSliderLabel = Instance.new("TextLabel")
-    SpeedSliderLabel.Name = "SpeedSliderLabel"
-    SpeedSliderLabel.Parent = BackgroundFrame
-    SpeedSliderLabel.BackgroundColor3 = Color3.new(0,0,0)
-    SpeedSliderLabel.BackgroundTransparency = 1
-    SpeedSliderLabel.BorderSizePixel = 0
-    SpeedSliderLabel.Size = UDim2.new(1, 0, 0, 20)
-    SpeedSliderLabel.Text = "Atur Kecepatan:"
-    SpeedSliderLabel.TextColor3 = Color3.new(0.7,0.7,0.7)
-    SpeedSliderLabel.TextScaled = true
-    SpeedSliderLabel.TextXAlignment = Enum.TextXAlignment.Center
-    SpeedSliderLabel.TextYAlignment = Enum.TextYAlignment.Center
-    SpeedSliderLabel.Font = Enum.Font.SourceSansBold
-    SpeedSliderLabel.LayoutOrder = 4
-    SpeedSliderLabel.ZIndex = 10
+    -- Label Jumlah Ikan
+    FishCountLabel = Instance.new("TextLabel")
+    FishCountLabel.Name = "FishCountLabel"
+    FishCountLabel.Parent = BackgroundFrame
+    FishCountLabel.BackgroundColor3 = Color3.new(0,0,0)
+    FishCountLabel.BackgroundTransparency = 1
+    FishCountLabel.Size = UDim2.new(1, 0, 0, 20)
+    FishCountLabel.Text = "Ikan: 0"
+    FishCountLabel.TextColor3 = Color3.new(0.7,0.7,0.7)
+    FishCountLabel.TextScaled = true
+    FishCountLabel.TextXAlignment = Enum.TextXAlignment.Center
+    FishCountLabel.TextYAlignment = Enum.TextYAlignment.Center
+    FishCountLabel.Font = Enum.Font.SourceSansBold
+    FishCountLabel.LayoutOrder = 4
+    FishCountLabel.ZIndex = 10
 
-    -- Slider Frame
-    SpeedSlider = Instance.new("Frame")
-    SpeedSlider.Name = "SpeedSlider"
-    SpeedSlider.Parent = BackgroundFrame
-    SpeedSlider.BackgroundColor3 = Color3.new(0.3,0.3,0.3)
-    SpeedSlider.BackgroundTransparency = 0.2
-    SpeedSlider.BorderSizePixel = 0
-    SpeedSlider.Size = UDim2.new(1, 0, 0, 10)
-    SpeedSlider.LayoutOrder = 5
-    SpeedSlider.ZIndex = 10
+    -- Slider Frame (opsional, buat ngatur interval cast)
+    local SliderFrame = Instance.new("Frame")
+    SliderFrame.Name = "SliderFrame"
+    SliderFrame.Parent = BackgroundFrame
+    SliderFrame.BackgroundColor3 = Color3.new(0.3,0.3,0.3)
+    SliderFrame.BackgroundTransparency = 0.2
+    SliderFrame.BorderSizePixel = 0
+    SliderFrame.Size = UDim2.new(1, 0, 0, 10)
+    SliderFrame.LayoutOrder = 5
+    SliderFrame.ZIndex = 10
 
     local UICornerSlider = Instance.new("UICorner")
     UICornerSlider.CornerRadius = UDim.new(0, 5)
-    UICornerSlider.Parent = SpeedSlider
+    UICornerSlider.Parent = SliderFrame
 
     -- Slider Fill (bar yang bergerak)
-    SpeedSliderFill = Instance.new("Frame")
-    SpeedSliderFill.Name = "SpeedSliderFill"
-    SpeedSliderFill.Parent = SpeedSlider
-    SpeedSliderFill.BackgroundColor3 = Color3.new(0.2,0.7,0.2)
-    SpeedSliderFill.BorderSizePixel = 0
-    SpeedSliderFill.Size = UDim2.new((FlySpeed - minFlySpeed) / (maxFlySpeed - minFlySpeed), 0, 1, 0)
-    SpeedSliderFill.ZIndex = 11
+    local SliderFill = Instance.new("Frame")
+    SliderFill.Name = "SliderFill"
+    SliderFill.Parent = SliderFrame
+    SliderFill.BackgroundColor3 = Color3.new(0.2,0.7,0.2)
+    SliderFill.BorderSizePixel = 0
+    SliderFill.Size = UDim2.new((CAST_INTERVAL - 1) / 10, 0, 1, 0) -- Asumsi min 1 detik, max 11 detik
+    SliderFill.ZIndex = 11
 
-    local isDragging = false
+    -- Label Slider
+    local SliderLabel = Instance.new("TextLabel")
+    SliderLabel.Name = "SliderLabel"
+    SliderLabel.Parent = BackgroundFrame
+    SliderLabel.BackgroundColor3 = Color3.new(0,0,0)
+    SliderLabel.BackgroundTransparency = 1
+    SliderLabel.Size = UDim2.new(1, 0, 0, 20)
+    SliderLabel.Text = "Interval Cast: " .. CAST_INTERVAL .. " detik"
+    SliderLabel.TextColor3 = Color3.new(0.7,0.7,0.7)
+    SliderLabel.TextScaled = true
+    SliderLabel.TextXAlignment = Enum.TextXAlignment.Center
+    SliderLabel.TextYAlignment = Enum.TextYAlignment.Center
+    SliderLabel.Font = Enum.Font.SourceSansBold
+    SliderLabel.LayoutOrder = 6
+    SliderLabel.ZIndex = 10
 
-    local function updateSlider(input)
-        local relativeX = (input.Position.X - SpeedSlider.AbsolutePosition.X) / SpeedSlider.AbsoluteSize.X
-        relativeX = math.max(0, math.min(1, relativeX)) -- Pastikan di antara 0 dan 1
-
-        FlySpeed = minFlySpeed + (maxFlySpeed - minFlySpeed) * relativeX
-        FlySpeed = math.floor(FlySpeed * 10) / 10 -- Bulatkan ke 1 desimal, biar gak terlalu kasar
-
-        SpeedSliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
-        SpeedLabel.Text = "Kecepatan: " .. FlySpeed
-    end
-
-    SpeedSlider.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            isDragging = true
-            updateSlider(input)
+    -- Koneksi tombol UI ke fungsi auto fishing
+    ToggleButton.MouseButton1Click:Connect(function()
+        IS_ACTIVE = not IS_ACTIVE
+        if IS_ACTIVE then
+            StartAutoFishing()
+        else
+            StopAutoFishing()
         end
     end)
-
-    SpeedSlider.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            isDragging = false
-        end
-    end)
-
-    UserInputService.InputChanged:Connect(function(input)
-        if isDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            updateSlider(input)
-        end
-    end)
-
-    -- Initial update untuk slider
-    SpeedSliderFill.Size = UDim2.new((FlySpeed - minFlySpeed) / (maxFlySpeed - minFlySpeed), 0, 1, 0)
-    SpeedLabel.Text = "Kecepatan: " .. FlySpeed
 end
 
--- Fly Logic (CFrame based)
-local function StartFlying()
-    if IsFlying then return end
-    IsFlying = true
-    Humanoid.PlatformStand = true -- Penting biar karakter gak jatuh
-    CurrentFlyCamera = workspace.CurrentCamera
-    print("Lo sekarang terbang dengan CFrame, anjing!")
+-- Fungsi buat auto fishing
+local function StartAutoFishing()
+    IS_ACTIVE = true
+    StatusLabel.Text = "Status: Aktif"
+    ToggleButton.Text = "Nonaktifkan Auto Fishing"
+    ToggleButton.BackgroundColor3 = Color3.new(0.7, 0.2, 0.2) -- Merah untuk OFF
+    print("Auto Fishing Aktif, cok!")
 
-    -- Update UI
-    if FlyStatusLabel then FlyStatusLabel.Text = "Status: Aktif" end
-    if ToggleButton then
-        ToggleButton.Text = "Nonaktifkan Fly (E)"
-        ToggleButton.BackgroundColor3 = Color3.new(0.7, 0.2, 0.2) -- Merah untuk OFF
-    end
-end
+    -- Loop untuk auto fishing
+    local castAttempts = 0
+    local fishCaught = 0
 
-local function StopFlying()
-    if not IsFlying then return end
-    IsFlying = false
-    Humanoid.PlatformStand = false
-    print("Lo udah gak terbang lagi, memek.")
+    local function autoFishingLoop()
+        if not IS_ACTIVE then return end
 
-    -- Update UI
-    if FlyStatusLabel then FlyStatusLabel.Text = "Status: Nonaktif" end
-    if ToggleButton then
-        ToggleButton.Text = "Aktifkan Fly (Q)"
-        ToggleButton.BackgroundColor3 = Color3.new(0.2, 0.7, 0.2) -- Hijau untuk ON
-    end
-end
+        -- Coba cast (tekan tombol E)
+        local success, message = pcall(function()
+            -- Simulate press E key
+            UserInputService:KeyDown(FISHING_KEY)
+            wait(0.1)
+            UserInputService:KeyUp(FISHING_KEY)
+        end)
 
--- Loop pergerakan saat terbang
-RunService.RenderStepped:Connect(function()
-    if IsFlying and CurrentFlyCamera and RootPart then
-        local moveVector = Vector3.new()
+        if success then
+            castAttempts = castAttempts + 1
+            ProgressLabel.Text = "Progress: " .. math.floor((castAttempts / MAX_CAST_ATTEMPTS) * 100) .. "%"
 
-        -- Keybinds untuk pergerakan (cocok untuk PC, tapi bisa juga di mobile jika executor support virtual keyboard)
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveVector = moveVector + CurrentFlyCamera.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveVector = moveVector - CurrentFlyCamera.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveVector = moveVector - CurrentFlyCamera.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveVector = moveVector + CurrentFlyCamera.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveVector = moveVector + Vector3.new(0, 1, 0) end -- Atas
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.C) then moveVector = moveVector - Vector3.new(0, 1, 0) end -- Bawah
+            -- Tunggu sebentar, lalu auto reel (tekan tombol R)
+            wait(REEL_DELAY)
+            local reelSuccess, reelMessage = pcall(function()
+                UserInputService:KeyDown(REEL_KEY)
+                wait(0.1)
+                UserInputService:KeyUp(REEL_KEY)
+            end)
 
-        if moveVector.Magnitude > 0 then
-            RootPart.CFrame = RootPart.CFrame + moveVector.Unit * FlySpeed
+            if reelSuccess then
+                fishCaught = fishCaught + 1
+                FishCountLabel.Text = "Ikan: " .. fishCaught
+            end
+        else
+            StatusLabel.Text = "Status: Error casting!"
+        end
+
+        -- Cek apakah sudah mencapai maksimal cast
+        if castAttempts >= MAX_CAST_ATTEMPTS then
+            StatusLabel.Text = "Status: Maksimal cast tercapai!"
+            StopAutoFishing()
+        else
+            -- Tunggu interval sebelum cast lagi
+            wait(CAST_INTERVAL)
+            autoFishingLoop()
         end
     end
-end)
 
--- Keybinds tambahan untuk toggle (Q/E untuk PC user)
+    autoFishingLoop()
+end
+
+local function StopAutoFishing()
+    IS_ACTIVE = false
+    StatusLabel.Text = "Status: Nonaktif"
+    ToggleButton.Text = "Aktifkan Auto Fishing"
+    ToggleButton.BackgroundColor3 = Color3.new(0.2, 0.7, 0.2) -- Hijau untuk ON
+    print("Auto Fishing Nonaktif, memek.")
+end
+
+-- Koneksi event keyboard untuk toggle (opsional)
 UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
     if gameProcessedEvent then return end
 
-    if input.KeyCode == Enum.KeyCode.Q then
-        if not IsFlying then StartFlying() end
-    elseif input.KeyCode == Enum.KeyCode.E then
-        if IsFlying then StopFlying() end
+    if input.KeyCode == Enum.KeyCode.F then -- F untuk toggle auto fishing
+        IS_ACTIVE = not IS_ACTIVE
+        if IS_ACTIVE then
+            StartAutoFishing()
+        else
+            StopAutoFishing()
+        end
     end
 end)
 
--- Koneksi tombol UI ke fungsi fly
-if ToggleButton then
-    ToggleButton.MouseButton1Click:Connect(function()
-        if not IsFlying then
-            StartFlying()
-        else
-            StopFlying()
-        end
-    end)
-end
-
--- Reset status terbang saat karakter mati
+-- Reset status auto fishing saat karakter mati
 Humanoid.Died:Connect(function()
-    if IsFlying then StopFlying() end
+    if IS_ACTIVE then
+        StopAutoFishing()
+    end
 end)
 
--- Pastikan UI dibuat setelah semua fungsi didefinisikan
-createFlyUI()
+-- Panggil fungsi buat bikin UI
+createFishingUI()
 
-print("Script Fly Lengkap dengan UI siap, cok!")
+print("Script Auto Fishing FISCH siap, cok!")
