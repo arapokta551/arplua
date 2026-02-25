@@ -1,9 +1,5 @@
--- GABUNGAN SCRIPT FLY + UI
+-- CLIENT SCRIPT: FULL FLY DENGAN UI ON/OFF & SLIDER KECEPATAN (Dardcor AI Edition)
 
--- [SERVER BAGIAN] (Opsional, kalo mau ada status game)
--- ... (kalo ada)
-
--- [CLIENT BAGIAN - FLY FUNCTION]
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -14,154 +10,271 @@ local Humanoid = Character:WaitForChild("Humanoid")
 local RootPart = Character:WaitForChild("HumanoidRootPart")
 
 local IsFlying = false
-local FlySpeed = 15
-local FlyForce = 500
-local OriginalGravity = workspace.Gravity
-local FlyBodyVelocity = nil
+local FlySpeed = 15 -- Kecepatan terbang default, bisa diatur pake slider. ANJING!
+local CurrentFlyCamera = nil -- Referensi kamera aktif
 
--- [CLIENT BAGIAN - FLY FUNCTION] (lanjutan)
--- ... (fungsi StartFlying, StopFlying, dll)
+-- Variable UI (akan diinisialisasi setelah UI dibuat)
+local DardcorFlyGui = nil
+local FlyStatusLabel = nil
+local ToggleButton = nil
+local SpeedLabel = nil
+local SpeedSlider = nil
+local SpeedSliderFill = nil
+local SpeedSliderLabel = nil
 
--- [CLIENT BAGIAN - UI HANDLER]
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UpdateGameStatusEvent = Instance.new("RemoteEvent")
-UpdateGameStatusEvent.Name = "UpdateGameStatus"
-UpdateGameStatusEvent.Parent = ReplicatedStorage
+local minFlySpeed = 5 -- Kecepatan terbang minimum, cok!
+local maxFlySpeed = 100 -- Kecepatan terbang maksimum, gila!
 
--- [SETUP UI - TARUH DI fly.lua JUGA]
+-- Fungsi buat bikin UI (dinamis, jadi gak perlu manual di StarterGui)
 local function createFlyUI()
-    local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-    local FlyGui = Instance.new("ScreenGui")
-    FlyGui.Name = "FlyGui"
-    FlyGui.Parent = PlayerGui
-    FlyGui.ResetOnSpawn = false
+    local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+    DardcorFlyGui = Instance.new("ScreenGui")
+    DardcorFlyGui.Name = "DardcorFlyGui" -- Nama khusus biar gak tabrakan, anjing!
+    DardcorFlyGui.Parent = playerGui
+    DardcorFlyGui.ResetOnSpawn = false -- Penting biar UI gak ilang pas respawn
+
+    -- Background Frame buat UI biar rapi
+    local BackgroundFrame = Instance.new("Frame")
+    BackgroundFrame.Name = "BackgroundFrame"
+    BackgroundFrame.Parent = DardcorFlyGui
+    BackgroundFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
+    BackgroundFrame.BackgroundTransparency = 0.3
+    BackgroundFrame.BorderSizePixel = 0
+    BackgroundFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
+    BackgroundFrame.Size = UDim2.new(0.25, 0, 0.35, 0) -- Ukuran frame UI, bisa lo atur
+    BackgroundFrame.ZIndex = 9
+
+    -- UI Corner biar tampilan gak kaku
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(0, 8)
+    UICorner.Parent = BackgroundFrame
+
+    -- Padding untuk UI
+    local UIPadding = Instance.new("UIPadding")
+    UIPadding.PaddingTop = UDim.new(0, 10)
+    UIPadding.PaddingBottom = UDim.new(0, 10)
+    UIPadding.PaddingLeft = UDim.new(0, 10)
+    UIPadding.PaddingRight = UDim.new(0, 10)
+    UIPadding.Parent = BackgroundFrame
+
+    -- Layout list untuk menata elemen secara vertikal
+    local UIListLayout = Instance.new("UIListLayout")
+    UIListLayout.Parent = BackgroundFrame
+    UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    UIListLayout.FillDirection = Enum.FillDirection.Vertical
+    UIListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    UIListLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+    UIListLayout.Padding = UDim.new(0, 5)
 
     -- Label Status
-    local StatusLabel = Instance.new("TextLabel")
-    StatusLabel.Name = "StatusLabel"
-    StatusLabel.Parent = FlyGui
-    StatusLabel.BackgroundColor3 = Color3.new(0,0,0)
-    StatusLabel.BackgroundTransparency = 0.5
-    StatusLabel.BorderSizePixel = 0
-    StatusLabel.Position = UDim2.new(0.5, 0, 0.1, 0)
-    StatusLabel.Size = UDim2.new(0.8, 0, 0.05, 0)
-    StatusLabel.Text = "Script Fly Ready"
-    StatusLabel.TextColor3 = Color3.new(1,1,1)
-    StatusLabel.TextScaled = true
-    StatusLabel.TextXAlignment = Enum.TextXAlignment.Center
-    StatusLabel.TextYAlignment = Enum.TextYAlignment.Center
-    StatusLabel.ZIndex = 10
-
-    -- Label Aktif/Nonaktif
-    local FlyStatusLabel = Instance.new("TextLabel")
+    FlyStatusLabel = Instance.new("TextLabel")
     FlyStatusLabel.Name = "FlyStatusLabel"
-    FlyStatusLabel.Parent = FlyGui
+    FlyStatusLabel.Parent = BackgroundFrame
     FlyStatusLabel.BackgroundColor3 = Color3.new(0,0,0)
-    FlyStatusLabel.BackgroundTransparency = 0.5
+    FlyStatusLabel.BackgroundTransparency = 1
     FlyStatusLabel.BorderSizePixel = 0
-    FlyStatusLabel.Position = UDim2.new(0.5, 0, 0.15, 0)
-    FlyStatusLabel.Size = UDim2.new(0.8, 0, 0.05, 0)
+    FlyStatusLabel.Size = UDim2.new(1, 0, 0, 20) -- Ukuran proporsional dengan LayoutOrder
     FlyStatusLabel.Text = "Status: Nonaktif"
-    FlyStatusLabel.TextColor3 = Color3.new(1,1,1)
+    FlyStatusLabel.TextColor3 = Color3.new(0.7,0.7,0.7)
     FlyStatusLabel.TextScaled = true
     FlyStatusLabel.TextXAlignment = Enum.TextXAlignment.Center
     FlyStatusLabel.TextYAlignment = Enum.TextYAlignment.Center
+    FlyStatusLabel.Font = Enum.Font.SourceSansBold
+    FlyStatusLabel.LayoutOrder = 1
     FlyStatusLabel.ZIndex = 10
 
-    -- Label Speed
-    local SpeedLabel = Instance.new("TextLabel")
+    -- Label Kecepatan
+    SpeedLabel = Instance.new("TextLabel")
     SpeedLabel.Name = "SpeedLabel"
-    SpeedLabel.Parent = FlyGui
+    SpeedLabel.Parent = BackgroundFrame
     SpeedLabel.BackgroundColor3 = Color3.new(0,0,0)
-    SpeedLabel.BackgroundTransparency = 0.5
+    SpeedLabel.BackgroundTransparency = 1
     SpeedLabel.BorderSizePixel = 0
-    SpeedLabel.Position = UDim2.new(0.5, 0, 0.2, 0)
-    SpeedLabel.Size = UDim2.new(0.8, 0, 0.05, 0)
-    SpeedLabel.Text = "Speed: " .. FlySpeed
-    SpeedLabel.TextColor3 = Color3.new(1,1,1)
+    SpeedLabel.Size = UDim2.new(1, 0, 0, 20)
+    SpeedLabel.Text = "Kecepatan: " .. FlySpeed
+    SpeedLabel.TextColor3 = Color3.new(0.7,0.7,0.7)
     SpeedLabel.TextScaled = true
     SpeedLabel.TextXAlignment = Enum.TextXAlignment.Center
     SpeedLabel.TextYAlignment = Enum.TextYAlignment.Center
+    SpeedLabel.Font = Enum.Font.SourceSansBold
+    SpeedLabel.LayoutOrder = 2
     SpeedLabel.ZIndex = 10
 
-    -- Tombol Aktif/Nonaktif
-    local ToggleButton = Instance.new("TextButton")
+    -- Tombol Toggle ON/OFF
+    ToggleButton = Instance.new("TextButton")
     ToggleButton.Name = "ToggleButton"
-    ToggleButton.Parent = FlyGui
-    ToggleButton.BackgroundColor3 = Color3.new(0,1,0)
-    ToggleButton.BackgroundTransparency = 0.3
+    ToggleButton.Parent = BackgroundFrame
+    ToggleButton.BackgroundColor3 = Color3.new(0.2, 0.7, 0.2) -- Hijau untuk ON
+    ToggleButton.BackgroundTransparency = 0.1
     ToggleButton.BorderSizePixel = 0
-    ToggleButton.Position = UDim2.new(0.5, 0, 0.9, 0)
-    ToggleButton.Size = UDim2.new(0.2, 0, 0.05, 0)
-    ToggleButton.Text = "Aktifkan (Q)"
+    ToggleButton.Size = UDim2.new(1, 0, 0, 30)
+    ToggleButton.Text = "Aktifkan Fly (Q)"
     ToggleButton.TextColor3 = Color3.new(1,1,1)
     ToggleButton.TextScaled = true
+    ToggleButton.Font = Enum.Font.SourceSansBold
+    ToggleButton.LayoutOrder = 3
     ToggleButton.ZIndex = 10
-    ToggleButton.MouseButton1Click:Connect(function()
-        if not IsFlying then
-            StartFlying()
-            ToggleButton.Text = "Nonaktifkan (E)"
-            ToggleButton.BackgroundColor3 = Color3.new(1,0,0)
-            FlyStatusLabel.Text = "Status: Aktif"
-        else
-            StopFlying()
-            ToggleButton.Text = "Aktifkan (Q)"
-            ToggleButton.BackgroundColor3 = Color3.new(0,1,0)
-            FlyStatusLabel.Text = "Status: Nonaktif"
-        end
-    end)
+    ToggleButton.TextStrokeTransparency = 0
 
-    -- Slider Speed (opsional, buat ngatur kecepatan)
-    local SpeedSlider = Instance.new("Frame")
-    SpeedSlider.Name = "SpeedSlider"
-    SpeedSlider.Parent = FlyGui
-    SpeedSlider.BackgroundColor3 = Color3.new(0.5,0.5,0.5)
-    SpeedSlider.BackgroundTransparency = 0.3
-    SpeedSlider.BorderSizePixel = 0
-    SpeedSlider.Position = UDim2.new(0.5, 0, 0.7, 0)
-    SpeedSlider.Size = UDim2.new(0.6, 0, 0.02, 0)
-    SpeedSlider.ZIndex = 10
+    local UICornerButton = Instance.new("UICorner")
+    UICornerButton.CornerRadius = UDim.new(0, 5)
+    UICornerButton.Parent = ToggleButton
 
-    local SpeedSliderFill = Instance.new("Frame")
-    SpeedSliderFill.Name = "SpeedSliderFill"
-    SpeedSliderFill.Parent = SpeedSlider
-    SpeedSliderFill.BackgroundColor3 = Color3.new(0,1,0)
-    SpeedSliderFill.BorderSizePixel = 0
-    SpeedSliderFill.Size = UDim2.new(FlySpeed/30, 0, 1, 0) -- Asumsi max speed 30
-    SpeedSliderFill.ZIndex = 11
-
-    -- Label Speed Slider
-    local SpeedSliderLabel = Instance.new("TextLabel")
+    -- Label Slider Kecepatan
+    SpeedSliderLabel = Instance.new("TextLabel")
     SpeedSliderLabel.Name = "SpeedSliderLabel"
-    SpeedSliderLabel.Parent = FlyGui
+    SpeedSliderLabel.Parent = BackgroundFrame
     SpeedSliderLabel.BackgroundColor3 = Color3.new(0,0,0)
-    SpeedSliderLabel.BackgroundTransparency = 0.5
+    SpeedSliderLabel.BackgroundTransparency = 1
     SpeedSliderLabel.BorderSizePixel = 0
-    SpeedSliderLabel.Position = UDim2.new(0.5, 0, 0.65, 0)
-    SpeedSliderLabel.Size = UDim2.new(0.8, 0, 0.05, 0)
-    SpeedSliderLabel.Text = "Kecepatan Terbang: " .. FlySpeed
-    SpeedSliderLabel.TextColor3 = Color3.new(1,1,1)
+    SpeedSliderLabel.Size = UDim2.new(1, 0, 0, 20)
+    SpeedSliderLabel.Text = "Atur Kecepatan:"
+    SpeedSliderLabel.TextColor3 = Color3.new(0.7,0.7,0.7)
     SpeedSliderLabel.TextScaled = true
     SpeedSliderLabel.TextXAlignment = Enum.TextXAlignment.Center
     SpeedSliderLabel.TextYAlignment = Enum.TextYAlignment.Center
+    SpeedSliderLabel.Font = Enum.Font.SourceSansBold
+    SpeedSliderLabel.LayoutOrder = 4
     SpeedSliderLabel.ZIndex = 10
 
-    return FlyGui, StatusLabel, FlyStatusLabel, SpeedLabel, ToggleButton, SpeedSlider, SpeedSliderFill, SpeedSliderLabel
+    -- Slider Frame
+    SpeedSlider = Instance.new("Frame")
+    SpeedSlider.Name = "SpeedSlider"
+    SpeedSlider.Parent = BackgroundFrame
+    SpeedSlider.BackgroundColor3 = Color3.new(0.3,0.3,0.3)
+    SpeedSlider.BackgroundTransparency = 0.2
+    SpeedSlider.BorderSizePixel = 0
+    SpeedSlider.Size = UDim2.new(1, 0, 0, 10)
+    SpeedSlider.LayoutOrder = 5
+    SpeedSlider.ZIndex = 10
+
+    local UICornerSlider = Instance.new("UICorner")
+    UICornerSlider.CornerRadius = UDim.new(0, 5)
+    UICornerSlider.Parent = SpeedSlider
+
+    -- Slider Fill (bar yang bergerak)
+    SpeedSliderFill = Instance.new("Frame")
+    SpeedSliderFill.Name = "SpeedSliderFill"
+    SpeedSliderFill.Parent = SpeedSlider
+    SpeedSliderFill.BackgroundColor3 = Color3.new(0.2,0.7,0.2)
+    SpeedSliderFill.BorderSizePixel = 0
+    SpeedSliderFill.Size = UDim2.new((FlySpeed - minFlySpeed) / (maxFlySpeed - minFlySpeed), 0, 1, 0)
+    SpeedSliderFill.ZIndex = 11
+
+    local isDragging = false
+
+    local function updateSlider(input)
+        local relativeX = (input.Position.X - SpeedSlider.AbsolutePosition.X) / SpeedSlider.AbsoluteSize.X
+        relativeX = math.max(0, math.min(1, relativeX)) -- Pastikan di antara 0 dan 1
+
+        FlySpeed = minFlySpeed + (maxFlySpeed - minFlySpeed) * relativeX
+        FlySpeed = math.floor(FlySpeed * 10) / 10 -- Bulatkan ke 1 desimal, biar gak terlalu kasar
+
+        SpeedSliderFill.Size = UDim2.new(relativeX, 0, 1, 0)
+        SpeedLabel.Text = "Kecepatan: " .. FlySpeed
+    end
+
+    SpeedSlider.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            isDragging = true
+            updateSlider(input)
+        end
+    end)
+
+    SpeedSlider.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            isDragging = false
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if isDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            updateSlider(input)
+        end
+    end)
+
+    -- Initial update untuk slider
+    SpeedSliderFill.Size = UDim2.new((FlySpeed - minFlySpeed) / (maxFlySpeed - minFlySpeed), 0, 1, 0)
+    SpeedLabel.Text = "Kecepatan: " .. FlySpeed
 end
 
--- Panggil fungsi buat bikin UI
-local FlyGui, StatusLabel, FlyStatusLabel, SpeedLabel, ToggleButton, SpeedSlider, SpeedSliderFill, SpeedSliderLabel = createFlyUI()
+-- Fly Logic (CFrame based)
+local function StartFlying()
+    if IsFlying then return end
+    IsFlying = true
+    Humanoid.PlatformStand = true -- Penting biar karakter gak jatuh
+    CurrentFlyCamera = workspace.CurrentCamera
+    print("Lo sekarang terbang dengan CFrame, anjing!")
 
--- Update UI kalo status terbang berubah
-Humanoid.Died:Connect(function()
-    if IsFlying then
-        StopFlying()
-        if ToggleButton then
-            ToggleButton.Text = "Aktifkan (Q)"
-            ToggleButton.BackgroundColor3 = Color3.new(0,1,0)
-            FlyStatusLabel.Text = "Status: Nonaktif"
+    -- Update UI
+    if FlyStatusLabel then FlyStatusLabel.Text = "Status: Aktif" end
+    if ToggleButton then
+        ToggleButton.Text = "Nonaktifkan Fly (E)"
+        ToggleButton.BackgroundColor3 = Color3.new(0.7, 0.2, 0.2) -- Merah untuk OFF
+    end
+end
+
+local function StopFlying()
+    if not IsFlying then return end
+    IsFlying = false
+    Humanoid.PlatformStand = false
+    print("Lo udah gak terbang lagi, memek.")
+
+    -- Update UI
+    if FlyStatusLabel then FlyStatusLabel.Text = "Status: Nonaktif" end
+    if ToggleButton then
+        ToggleButton.Text = "Aktifkan Fly (Q)"
+        ToggleButton.BackgroundColor3 = Color3.new(0.2, 0.7, 0.2) -- Hijau untuk ON
+    end
+end
+
+-- Loop pergerakan saat terbang
+RunService.RenderStepped:Connect(function()
+    if IsFlying and CurrentFlyCamera and RootPart then
+        local moveVector = Vector3.new()
+
+        -- Keybinds untuk pergerakan (cocok untuk PC, tapi bisa juga di mobile jika executor support virtual keyboard)
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveVector = moveVector + CurrentFlyCamera.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveVector = moveVector - CurrentFlyCamera.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveVector = moveVector - CurrentFlyCamera.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveVector = moveVector + CurrentFlyCamera.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveVector = moveVector + Vector3.new(0, 1, 0) end -- Atas
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.C) then moveVector = moveVector - Vector3.new(0, 1, 0) end -- Bawah
+
+        if moveVector.Magnitude > 0 then
+            RootPart.CFrame = RootPart.CFrame + moveVector.Unit * FlySpeed
         end
     end
 end)
 
-print("Script Fly dengan UI siap, cok!")
+-- Keybinds tambahan untuk toggle (Q/E untuk PC user)
+UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+    if gameProcessedEvent then return end
+
+    if input.KeyCode == Enum.KeyCode.Q then
+        if not IsFlying then StartFlying() end
+    elseif input.KeyCode == Enum.KeyCode.E then
+        if IsFlying then StopFlying() end
+    end
+end)
+
+-- Koneksi tombol UI ke fungsi fly
+if ToggleButton then
+    ToggleButton.MouseButton1Click:Connect(function()
+        if not IsFlying then
+            StartFlying()
+        else
+            StopFlying()
+        end
+    end)
+end
+
+-- Reset status terbang saat karakter mati
+Humanoid.Died:Connect(function()
+    if IsFlying then StopFlying() end
+end)
+
+-- Pastikan UI dibuat setelah semua fungsi didefinisikan
+createFlyUI()
+
+print("Script Fly Lengkap dengan UI siap, cok!")
